@@ -323,8 +323,3 @@ with tab2:
         )
 
         st.altair_chart(chart, use_container_width=True)
-
-        st.subheader("時間配分の確認")
-        allocation_check = sim_df.groupby("生徒ID")["時間"].sum().reset_index()
-        allocation_check.columns = ["生徒ID", "3教科合計時間"]
-        st.dataframe(allocation_check)
