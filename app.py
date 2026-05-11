@@ -146,11 +146,24 @@ with tab1:
 
     if all_reached:
         remaining = TOTAL_TIME - total_required_time
-        st.metric("3教科合計の必要時間", f"{int(np.ceil(total_required_time))}時間")
+
+        st.metric(
+            "3教科合計の必要時間",
+            f"{int(np.ceil(total_required_time))}時間"
+        )
+
         if remaining >= 0:
-            st.success(f"120時間以内に達成可能です。残り約{int(np.floor(remaining))}時間あります。")
+            st.success(
+                f"120時間以内に達成可能です。"
+                f"残り約{int(np.floor(remaining))}時間あります。"
+                f"さらに高得点も狙えます。"
+            )
         else:
-            st.error(f"120時間を約{int(np.ceil(abs(remaining)))}時間超えています。")
+            st.error(
+                f"120時間を約{int(np.ceil(abs(remaining)))}時間超えています。"
+                f"睡眠時間を削りましょう。"
+            )
+
     else:
         st.metric("3教科合計の必要時間", "一部未達成")
 
@@ -267,7 +280,6 @@ with tab2:
                     "英語": np.random.randint(1, 6)
                 }
 
-            # 苦手科目ほど多く時間を配分
             weakness_weights = np.array([
                 6 - profs["国語"],
                 6 - profs["数学"],
@@ -275,6 +287,7 @@ with tab2:
             ])
 
             random_weights = np.random.dirichlet(weakness_weights)
+
             time_allocation = {
                 "国語": random_weights[0] * TOTAL_TIME,
                 "数学": random_weights[1] * TOTAL_TIME,
