@@ -9,7 +9,7 @@ COLOR_DOMAIN = ["国語", "数学", "英語"]
 COLOR_RANGE = ["red", "blue", "green"]
 
 EPS = 0.1
-MAX_TIME = 40
+TOTAL_TIME = 120
 
 
 def safe_limit(target, minimum_limit):
@@ -97,7 +97,7 @@ def calc_time(target, config):
     if target <= config["start"]:
         return 0
 
-    for t in np.arange(0, MAX_TIME + 0.5, 0.5):
+    for t in np.arange(0, TOTAL_TIME + 0.5, 0.5):
         if calc_score(t, config) >= target - EPS:
             return t
 
@@ -112,12 +112,12 @@ tab1, tab2 = st.tabs(["📊 目標達成予測", "👥 シミュレーション"
 
 with tab1:
     st.header("科目別学習設計")
-    st.caption("1教科最大40時間、3教科合計で約120時間を想定しています。")
+    st.caption("1人あたり合計120時間の学習時間がある想定です。")
 
     cols = st.columns(3)
     user_profile = {}
 
-    total_time = 0
+    total_required_time = 0
     all_reached = True
 
     for i, sub in enumerate(SUBJECTS):
@@ -137,21 +137,26 @@ with tab1:
 
             if req_time is None:
                 all_reached = False
-                st.warning("40時間以内には未達成")
+                st.warning("120時間以内には未達成")
             else:
-                total_time += req_time
+                total_required_time += req_time
                 st.success(f"必要時間：{int(np.ceil(req_time))}時間")
 
     st.divider()
 
     if all_reached:
-        st.metric("3教科合計の必要時間", f"{int(np.ceil(total_time))}時間")
+        remaining = TOTAL_TIME - total_required_time
+        st.metric("3教科合計の必要時間", f"{int(np.ceil(total_required_time))}時間")
+        if remaining >= 0:
+            st.success(f"120時間以内に達成可能です。残り約{int(np.floor(remaining))}時間あります。")
+        else:
+            st.error(f"120時間を約{int(np.ceil(abs(remaining)))}時間超えています。")
     else:
         st.metric("3教科合計の必要時間", "一部未達成")
 
     st.subheader("📈 学習モデルの可視化")
 
-    t_range = np.arange(0, MAX_TIME + 1, 1)
+    t_range = np.arange(0, TOTAL_TIME + 1, 1)
     rows = []
 
     for sub in SUBJECTS:
@@ -167,7 +172,7 @@ with tab1:
     df = pd.DataFrame(rows)
 
     line = alt.Chart(df).mark_line(size=3).encode(
-        x=alt.X("時間", scale=alt.Scale(domain=[0, MAX_TIME])),
+        x=alt.X("時間", scale=alt.Scale(domain=[0, TOTAL_TIME])),
         y=alt.Y("点数", scale=alt.Scale(domain=[0, 100])),
         color=alt.Color(
             "科目",
@@ -224,12 +229,12 @@ with tab1:
 
 with tab2:
     st.header("100名シミュレーション")
-    st.caption("各生徒について、1教科あたり0〜40時間の学習を想定しています。")
+    st.caption("各生徒は合計120時間を持ち、それを3教科に配分する想定です。")
 
     if st.button("シミュレーション実行"):
         sim = []
 
-        for _ in range(100):
+        for student_id in range(1, 101):
             student_type = np.random.choice(
                 [
                     "数学得意・国語苦手",
@@ -262,13 +267,28 @@ with tab2:
                     "英語": np.random.randint(1, 6)
                 }
 
+            # 苦手科目ほど多く時間を配分
+            weakness_weights = np.array([
+                6 - profs["国語"],
+                6 - profs["数学"],
+                6 - profs["英語"]
+            ])
+
+            random_weights = np.random.dirichlet(weakness_weights)
+            time_allocation = {
+                "国語": random_weights[0] * TOTAL_TIME,
+                "数学": random_weights[1] * TOTAL_TIME,
+                "英語": random_weights[2] * TOTAL_TIME
+            }
+
             for sub in SUBJECTS:
                 target = np.random.randint(50, 96)
-                t = np.random.uniform(0, MAX_TIME)
+                t = time_allocation[sub]
                 config = get_model_config(sub, profs[sub], target)
                 score = calc_score(t, config) + np.random.normal(0, 3)
 
                 sim.append({
+                    "生徒ID": student_id,
                     "時間": t,
                     "点数": np.clip(score, 0, 100),
                     "科目": sub,
@@ -280,13 +300,18 @@ with tab2:
         sim_df = pd.DataFrame(sim)
 
         chart = alt.Chart(sim_df).mark_circle(size=70, opacity=0.75).encode(
-            x=alt.X("時間", scale=alt.Scale(domain=[0, MAX_TIME])),
+            x=alt.X("時間", scale=alt.Scale(domain=[0, TOTAL_TIME])),
             y=alt.Y("点数", scale=alt.Scale(domain=[0, 100])),
             color=alt.Color(
                 "科目",
                 scale=alt.Scale(domain=COLOR_DOMAIN, range=COLOR_RANGE)
             ),
-            tooltip=["タイプ", "科目", "得意度", "目標点数", "時間", "点数"]
+            tooltip=["生徒ID", "タイプ", "科目", "得意度", "目標点数", "時間", "点数"]
         )
 
         st.altair_chart(chart, use_container_width=True)
+
+        st.subheader("時間配分の確認")
+        allocation_check = sim_df.groupby("生徒ID")["時間"].sum().reset_index()
+        allocation_check.columns = ["生徒ID", "3教科合計時間"]
+        st.dataframe(allocation_check)
