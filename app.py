@@ -328,7 +328,7 @@ with tab2:
                 base_score = calc_score(t, config)
 
                 # 学習時間が増えるほど点数が高くなる傾向を少し強める
-                time_effect = 0.08 * t
+                time_effect = 0.18 * t
 
                 score = base_score + time_effect + np.random.normal(0, personal_noise_sd)
 
