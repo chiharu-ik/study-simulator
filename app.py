@@ -243,7 +243,7 @@ with tab1:
 
 with tab2:
     st.header("100名シミュレーション")
-    st.caption("各生徒は合計120時間を持ち、それを3教科に配分する想定です。個人差を加えた上で、科目ごとの平均が60点になるよう補正しています。")
+    st.caption("各生徒は合計120時間を持ち、それを3教科に配分する想定です。科目ごとの平均点を60点に補正しつつ、学習時間と点数に正の相関が出るよう調整しています。")
 
     if st.button("シミュレーション実行"):
         sim = []
@@ -281,10 +281,11 @@ with tab2:
                     "英語": np.random.randint(1, 6)
                 }
 
+            # 苦手科目ほど少し多めに時間を配分するが、極端になりすぎないように調整
             weakness_weights = np.array([
-                6 - profs["国語"],
-                6 - profs["数学"],
-                6 - profs["英語"]
+                2.0 + (6 - profs["国語"]) * 0.5,
+                2.0 + (6 - profs["数学"]) * 0.5,
+                2.0 + (6 - profs["英語"]) * 0.5
             ])
 
             random_weights = np.random.dirichlet(weakness_weights)
@@ -295,9 +296,10 @@ with tab2:
                 "英語": random_weights[2] * TOTAL_TIME
             }
 
-            personal_growth = np.random.normal(1.0, 0.12)
-            personal_limit = np.random.normal(0, 3)
-            personal_noise_sd = np.random.uniform(2, 6)
+            # 個人差
+            personal_growth = np.random.normal(1.0, 0.08)
+            personal_limit = np.random.normal(0, 2)
+            personal_noise_sd = np.random.uniform(1.5, 3.5)
 
             for sub in SUBJECTS:
                 target = np.random.randint(50, 96)
@@ -323,7 +325,12 @@ with tab2:
                     100
                 )
 
-                score = calc_score(t, config) + np.random.normal(0, personal_noise_sd)
+                base_score = calc_score(t, config)
+
+                # 学習時間が増えるほど点数が高くなる傾向を少し強める
+                time_effect = 0.08 * t
+
+                score = base_score + time_effect + np.random.normal(0, personal_noise_sd)
 
                 sim.append({
                     "生徒ID": student_id,
@@ -344,6 +351,19 @@ with tab2:
             current_mean = sim_df.loc[sim_df["科目"] == sub, "点数"].mean()
             sim_df.loc[sim_df["科目"] == sub, "点数"] = (
                 sim_df.loc[sim_df["科目"] == sub, "点数"] - current_mean + TARGET_MEAN
+            )
+
+        sim_df["点数"] = sim_df["点数"].clip(0, 100)
+
+        # 平均補正後も時間と点数の正の相関が残るように、時間効果を再調整
+        for sub in SUBJECTS:
+            sub_mask = sim_df["科目"] == sub
+            centered_time = sim_df.loc[sub_mask, "時間"] - sim_df.loc[sub_mask, "時間"].mean()
+            sim_df.loc[sub_mask, "点数"] = sim_df.loc[sub_mask, "点数"] + 0.10 * centered_time
+
+            current_mean = sim_df.loc[sub_mask, "点数"].mean()
+            sim_df.loc[sub_mask, "点数"] = (
+                sim_df.loc[sub_mask, "点数"] - current_mean + TARGET_MEAN
             )
 
         sim_df["点数"] = sim_df["点数"].clip(0, 100)
