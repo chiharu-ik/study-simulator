@@ -10,6 +10,7 @@ COLOR_RANGE = ["red", "blue", "green"]
 
 EPS = 0.1
 TOTAL_TIME = 120
+TARGET_MEAN = 60
 
 
 def safe_limit(target, minimum_limit):
@@ -242,7 +243,7 @@ with tab1:
 
 with tab2:
     st.header("100名シミュレーション")
-    st.caption("各生徒は合計120時間を持ち、それを3教科に配分する想定です。個人差として成長速度・収束点・得点誤差を加えています。")
+    st.caption("各生徒は合計120時間を持ち、それを3教科に配分する想定です。個人差を加えた上で、科目ごとの平均が60点になるよう補正しています。")
 
     if st.button("シミュレーション実行"):
         sim = []
@@ -280,7 +281,6 @@ with tab2:
                     "英語": np.random.randint(1, 6)
                 }
 
-            # 苦手科目ほど多く時間を配分
             weakness_weights = np.array([
                 6 - profs["国語"],
                 6 - profs["数学"],
@@ -295,22 +295,14 @@ with tab2:
                 "英語": random_weights[2] * TOTAL_TIME
             }
 
-            # 個人ごとの学習効率
             personal_growth = np.random.normal(1.0, 0.12)
-
-            # 個人ごとの到達力
             personal_limit = np.random.normal(0, 3)
-
-            # 個人ごとの得点誤差
             personal_noise_sd = np.random.uniform(2, 6)
 
             for sub in SUBJECTS:
                 target = np.random.randint(50, 96)
                 t = time_allocation[sub]
-
                 config = get_model_config(sub, profs[sub], target)
-
-                # 成長速度 k, first_k, second_k, slope に個人差を反映
                 config = config.copy()
 
                 if "k" in config:
@@ -325,8 +317,11 @@ with tab2:
                 if "slope" in config:
                     config["slope"] = max(0.01, config["slope"] * personal_growth)
 
-                # 収束点にも個人差を加える
-                config["limit"] = np.clip(config["limit"] + personal_limit, config["start"], 100)
+                config["limit"] = np.clip(
+                    config["limit"] + personal_limit,
+                    config["start"],
+                    100
+                )
 
                 score = calc_score(t, config) + np.random.normal(0, personal_noise_sd)
 
@@ -344,6 +339,21 @@ with tab2:
 
         sim_df = pd.DataFrame(sim)
 
+        # 科目ごとの平均が60点になるように補正
+        for sub in SUBJECTS:
+            current_mean = sim_df.loc[sim_df["科目"] == sub, "点数"].mean()
+            sim_df.loc[sim_df["科目"] == sub, "点数"] = (
+                sim_df.loc[sim_df["科目"] == sub, "点数"] - current_mean + TARGET_MEAN
+            )
+
+        sim_df["点数"] = sim_df["点数"].clip(0, 100)
+
+        st.subheader("科目別の平均点・分散")
+
+        summary_df = sim_df.groupby("科目")["点数"].agg(["mean", "var", "std"]).reset_index()
+        summary_df.columns = ["科目", "平均点", "分散", "標準偏差"]
+        st.dataframe(summary_df)
+
         chart = alt.Chart(sim_df).mark_circle(size=70, opacity=0.75).encode(
             x=alt.X("時間", scale=alt.Scale(domain=[0, TOTAL_TIME])),
             y=alt.Y("点数", scale=alt.Scale(domain=[0, 100])),
@@ -351,13 +361,17 @@ with tab2:
                 "科目",
                 scale=alt.Scale(domain=COLOR_DOMAIN, range=COLOR_RANGE)
             ),
-            tooltip=["生徒ID", "タイプ", "科目", "得意度", "目標点数", "時間", "点数", "成長効率", "得点誤差SD"]
+            tooltip=[
+                "生徒ID",
+                "タイプ",
+                "科目",
+                "得意度",
+                "目標点数",
+                "時間",
+                "点数",
+                "成長効率",
+                "得点誤差SD"
+            ]
         )
 
-        st.altair_chart(chart, use_container_width=True)
-
-        st.subheader("科目別の平均点・分散")
-        summary_df = sim_df.groupby("科目")["点数"].agg(["mean", "var", "std"]).reset_index()
-        summary_df.columns = ["科目", "平均点", "分散", "標準偏差"]
-        st.dataframe(summary_df)
         st.altair_chart(chart, use_container_width=True)
